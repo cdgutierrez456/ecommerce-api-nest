@@ -38,7 +38,7 @@ model User {
   id String @id @default(uuid())
   email String @unique
   password String
-  firsName String?
+  firstName String?
   lastName String?
   role Role @default(USER)
   refreshToken String?
