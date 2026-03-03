@@ -1,5 +1,5 @@
 import { randomBytes } from 'node:crypto';
-import { ConflictException, Injectable, InternalServerErrorException } from '@nestjs/common';
+import { ConflictException, Injectable, InternalServerErrorException, UnauthorizedException } from '@nestjs/common';
 import * as bcrypt from 'bcrypt'
 
 import { JwtService } from '@nestjs/jwt';
@@ -7,6 +7,7 @@ import { JwtService } from '@nestjs/jwt';
 import { RegisterDto } from './dto/register.dto';
 import { PrismaService } from 'src/prisma/prisma.service';
 import { AuthResponseDto } from './dto/auth-response.dto';
+import { LoginDto } from './dto/login.dto';
 
 @Injectable()
 export class AuthService {
@@ -81,6 +82,68 @@ export class AuthService {
       where: { id: userId },
       data: { refreshToken }
     })
+  }
+
+  // Refresh access token
+  async refreshTokens(userId: string): Promise<AuthResponseDto> {
+    const user = await this.prisma.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        email: true,
+        firstName: true,
+        lastName: true,
+        role: true,
+      }
+    })
+
+    if (!user)
+      throw new UnauthorizedException('User not found')
+
+    const tokens = await this.generateTokens(user.id, user.email)
+
+    await this.updateRefreshToken(user.id, tokens.refreshToken)
+
+    return {
+      ...tokens,
+      user
+    }
+  }
+
+  // Logout
+  async logout(userId: string): Promise<void> {
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        refreshToken: null
+      }
+    })
+  }
+
+  async login(loginDto: LoginDto): Promise<AuthResponseDto> {
+    const { email, password } = loginDto
+
+    const user = await this.prisma.user.findUnique({
+      where: { email }
+    });
+
+    if (!user || !(await bcrypt.compare(password, user.password)))
+      throw new UnauthorizedException('Invalid email or passowrd')
+
+    const tokens = await this.generateTokens(user.id, user.email)
+    await this.updateRefreshToken(user.id, tokens.refreshToken)
+
+    return {
+      ...tokens,
+      user: {
+        id: user.id,
+        email: user.email,
+        firstName: user.firstName,
+        lastName: user.lastName,
+        role: user.role
+      }
+    }
+
   }
 
 }
